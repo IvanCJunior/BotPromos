@@ -1,0 +1,64 @@
+DIAGNÓSTICO AVANÇADO DO BOT DE PROMOÇÕES
+=========================================
+
+ARQUIVOS NOVOS
+--------------
+diagnostics\__init__.py
+diagnostics\audit.py
+diagnostics\report.py
+
+ARQUIVOS ALTERADOS
+------------------
+telegram_bot\listener.py
+whatsapp\queue.py
+main.py
+
+INSTALAÇÃO
+----------
+1. Encerre o bot com CTRL+C.
+2. Faça uma cópia de segurança dos arquivos atuais:
+   - telegram_bot\listener.py
+   - whatsapp\queue.py
+   - main.py
+3. Extraia este ZIP na pasta principal do projeto:
+   C:\Projeto Grupo Promo\BotPromos
+4. Confirme a substituição dos três arquivos alterados.
+5. Inicie o bot normalmente pelo CMD.
+
+O QUE SERÁ CRIADO
+-----------------
+Na primeira execução, o bot criará automaticamente:
+
+logs\diagnostico\eventos_AAAA-MM-DD.jsonl
+logs\diagnostico\execucao_ID.jsonl
+logs\diagnostico\relatorio_ID.txt
+logs\diagnostico\resumo_ID.json
+logs\diagnostico\relatorio_ultima_execucao.txt
+logs\diagnostico\resumo_ultima_execucao.json
+
+COMO USAR NO TESTE DE 24 HORAS
+------------------------------
+1. Inicie o bot.
+2. Deixe-o rodar normalmente por 24 horas.
+3. Encerre usando CTRL+C.
+4. O relatório será gerado automaticamente.
+5. Envie para análise estes três arquivos:
+   - logs\diagnostico\relatorio_ultima_execucao.txt
+   - logs\diagnostico\resumo_ultima_execucao.json
+   - logs\diagnostico\execucao_ID.jsonl
+
+GERAR O RELATÓRIO MANUALMENTE
+-----------------------------
+Caso o computador seja desligado abruptamente e o relatório não seja criado,
+execute dentro da pasta do projeto:
+
+python -m diagnostics.report
+
+O arquivo JSONL é o mais importante. Ele contém cada etapa, erro, alerta,
+link, tempo de processamento e resultado do WhatsApp.
+
+OBSERVAÇÃO
+----------
+Esta alteração não muda o fluxo simples do whatsapp\service.py que já está
+funcionando. Ela apenas acrescenta auditoria no listener, na fila e no início
+e encerramento do bot.

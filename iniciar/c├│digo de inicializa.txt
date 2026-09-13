@@ -1,0 +1,1 @@
+cd /d C:\Projeto Grupo Promo\BotPromos && .venv\Scripts\activate && python main.py

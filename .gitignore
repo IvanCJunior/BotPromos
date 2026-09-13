@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+*.session
+*.session-journal
+playwright_tools/profile_ml/
+playwright_tools/profile_amazon/
+whatsapp_profile/
+logs/
+*.log
+.DS_Store
+.vscode/
+.idea/
