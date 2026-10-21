@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -16,18 +16,30 @@
         .card { padding: 20px; }
         .card small { display: block; color: #6b7280; margin-bottom: 8px; }
         .card strong { font-size: 30px; }
-        .busca { display: flex; gap: 10px; margin-bottom: 18px; }
-        .busca input { flex: 1; padding: 12px; border: 1px solid #d1d5db; border-radius: 9px; }
+        .filtros { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap: 10px; margin-bottom: 12px; }
+        input, select { width: 100%; min-width: 0; padding: 12px; border: 1px solid #d1d5db; border-radius: 9px; background: white; color: #18212f; }
         button { padding: 12px 18px; border: 0; border-radius: 9px; background: #111827; color: white; cursor: pointer; }
+        button:hover { background: #374151; }
+        .acoes { display: flex; gap: 10px; margin-bottom: 18px; }
+        .resultado { color: #6b7280; font-size: 13px; margin-bottom: 12px; }
         .tabela { overflow: hidden; }
+        .tabela-scroll { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; }
         th, td { text-align: left; padding: 13px; border-bottom: 1px solid #eef0f3; font-size: 14px; vertical-align: top; }
         th { background: #f9fafb; color: #4b5563; }
-        .mensagem { max-width: 430px; white-space: pre-line; }
+        .mensagem { max-width: 430px; white-space: pre-line; overflow-wrap: anywhere; }
         .preco, .cupom { font-weight: bold; }
         a { color: #2563eb; text-decoration: none; }
+        a:hover { text-decoration: underline; }
         .muted { color: #6b7280; }
-        @media (max-width: 800px) { .cards { grid-template-columns: 1fr; } .tabela { overflow-x: auto; } }
+        @media (max-width: 1000px) { .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 600px) {
+            header { padding: 18px; }
+            main { padding: 0 12px; }
+            .cards { grid-template-columns: 1fr; }
+            .filtros { grid-template-columns: 1fr; }
+            .acoes button { flex: 1; }
+        }
     </style>
 </head>
 <body>
@@ -43,68 +55,128 @@
             <div class="card"><small>Lojas identificadas</small><strong id="lojas">-</strong></div>
         </section>
 
-        <div class="busca">
+        <section class="filtros">
             <input id="busca" type="text" placeholder="Pesquisar produto, canal, loja ou cupom">
-            <button onclick="carregar()">Pesquisar</button>
-            <button onclick="limparBusca()">Limpar</button>
+            <select id="loja">
+                <option value="">Todas as lojas</option>
+            </select>
+            <select id="cupom">
+                <option value="todos">Todos os cupons</option>
+                <option value="com">Com cupom</option>
+                <option value="sem">Sem cupom</option>
+            </select>
+            <input id="data_inicio" type="date" aria-label="Data inicial" title="Data inicial">
+            <input id="data_fim" type="date" aria-label="Data final" title="Data final">
+            <button onclick="carregar()">Filtrar</button>
+        </section>
+
+        <div class="acoes">
+            <button onclick="limparFiltros()">Limpar filtros</button>
         </div>
 
+        <div id="resultado" class="resultado">Carregando promoções...</div>
+
         <section class="tabela">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Data</th>
-                        <th>Promoção</th>
-                        <th>Loja</th>
-                        <th>Preço</th>
-                        <th>Cupom</th>
-                        <th>Link</th>
-                    </tr>
-                </thead>
-                <tbody id="lista">
-                    <tr><td colspan="6" class="muted">Carregando...</td></tr>
-                </tbody>
-            </table>
+            <div class="tabela-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Promoção</th>
+                            <th>Loja</th>
+                            <th>Preço</th>
+                            <th>Cupom</th>
+                            <th>Link</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista">
+                        <tr><td colspan="6" class="muted">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
         </section>
     </main>
 
     <script>
+        let lojasCarregadas = false;
+
         async function carregar() {
             const busca = document.getElementById("busca").value.trim();
+            const loja = document.getElementById("loja").value;
+            const cupom = document.getElementById("cupom").value;
+            const dataInicio = document.getElementById("data_inicio").value;
+            const dataFim = document.getElementById("data_fim").value;
 
-            const [resumo, lista] = await Promise.all([
-                fetch("/api/resumo"),
-                fetch("/api/promocoes?busca=" + encodeURIComponent(busca))
-            ]);
-
-            const dadosResumo = await resumo.json();
-            const dadosLista = await lista.json();
-
-            document.getElementById("total").textContent = dadosResumo.total;
-            document.getElementById("cupons").textContent = dadosResumo.cupons;
-            document.getElementById("lojas").textContent = dadosResumo.lojas.length;
+            const parametros = new URLSearchParams({
+                busca,
+                loja,
+                cupom,
+                data_inicio: dataInicio,
+                data_fim: dataFim
+            });
 
             const tabela = document.getElementById("lista");
+            document.getElementById("resultado").textContent = "Carregando promoções...";
 
-            if (!dadosLista.items.length) {
-                tabela.innerHTML = '<tr><td colspan="6" class="muted">Nenhuma promoção encontrada.</td></tr>';
-                return;
+            try {
+                const [resumoResposta, listaResposta] = await Promise.all([
+                    fetch("/api/resumo"),
+                    fetch("/api/promocoes?" + parametros.toString())
+                ]);
+
+                if (!resumoResposta.ok || !listaResposta.ok) {
+                    throw new Error("Não foi possível carregar os dados.");
+                }
+
+                const resumo = await resumoResposta.json();
+                const dados = await listaResposta.json();
+
+                document.getElementById("total").textContent = resumo.total;
+                document.getElementById("cupons").textContent = resumo.cupons;
+                document.getElementById("lojas").textContent = resumo.lojas;
+
+                if (!lojasCarregadas) {
+                    const seletor = document.getElementById("loja");
+                    resumo.opcoes_lojas.forEach(nome => {
+                        const opcao = document.createElement("option");
+                        opcao.value = nome;
+                        opcao.textContent = nome;
+                        seletor.appendChild(opcao);
+                    });
+                    lojasCarregadas = true;
+                }
+
+                document.getElementById("resultado").textContent =
+                    dados.items.length + " promoção(ões) encontrada(s). Exibindo no máximo 200.";
+
+                if (!dados.items.length) {
+                    tabela.innerHTML = '<tr><td colspan="6" class="muted">Nenhuma promoção encontrada.</td></tr>';
+                    return;
+                }
+
+                tabela.innerHTML = dados.items.map(promocao => `
+                    <tr>
+                        <td>${escapar(promocao.data || "-")}<br><span class="muted">${escapar(promocao.canal || "-")}</span></td>
+                        <td class="mensagem">${escapar((promocao.mensagem || "").slice(0, 500))}</td>
+                        <td>${escapar(promocao.loja || "-")}</td>
+                        <td class="preco">${escapar(promocao.preco || "-")}</td>
+                        <td class="cupom">${escapar(promocao.cupom || "-")}</td>
+                        <td>${criarLink(promocao.link)}</td>
+                    </tr>
+                `).join("");
+            } catch (erro) {
+                document.getElementById("resultado").textContent = "Erro ao carregar as promoções.";
+                tabela.innerHTML = '<tr><td colspan="6" class="muted">Verifique se o servidor está funcionando e tente novamente.</td></tr>';
+                console.error(erro);
             }
-
-            tabela.innerHTML = dadosLista.items.map(promocao => `
-                <tr>
-                    <td>${promocao.data || "-"}<br><span class="muted">${escapar(promocao.canal || "-")}</span></td>
-                    <td class="mensagem">${escapar((promocao.mensagem || "").slice(0, 500))}</td>
-                    <td>${escapar(promocao.loja || "-")}</td>
-                    <td class="preco">${escapar(promocao.preco || "-")}</td>
-                    <td class="cupom">${escapar(promocao.cupom || "-")}</td>
-                    <td>${promocao.link ? `<a href="${escapar(promocao.link)}" target="_blank">Abrir ↗</a>` : "-"}</td>
-                </tr>
-            `).join("");
         }
 
-        function limparBusca() {
+        function limparFiltros() {
             document.getElementById("busca").value = "";
+            document.getElementById("loja").value = "";
+            document.getElementById("cupom").value = "todos";
+            document.getElementById("data_inicio").value = "";
+            document.getElementById("data_fim").value = "";
             carregar();
         }
 
@@ -116,6 +188,23 @@
                 '"': "&quot;",
                 "'": "&#039;"
             })[caractere]);
+        }
+
+        function criarLink(link) {
+            if (!link) return "-";
+
+            try {
+                const url = new URL(link);
+                if (url.protocol !== "https:" && url.protocol !== "http:") return "-";
+                const ancora = document.createElement("a");
+                ancora.href = url.href;
+                ancora.target = "_blank";
+                ancora.rel = "noopener noreferrer";
+                ancora.textContent = "Abrir ↗";
+                return ancora.outerHTML;
+            } catch {
+                return "-";
+            }
         }
 
         document.getElementById("busca").addEventListener("keydown", evento => {

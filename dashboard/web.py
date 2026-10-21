@@ -1,4 +1,4 @@
-import json
+﻿import json
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,10 +28,9 @@ def buscar_resumo():
     ).fetchone()[0]
 
     lojas = conexao.execute(
-        "SELECT loja, COUNT(*) AS quantidade "
-        "FROM promocoes "
+        "SELECT DISTINCT loja FROM promocoes "
         "WHERE loja IS NOT NULL AND TRIM(loja) <> '' "
-        "GROUP BY loja ORDER BY quantidade DESC"
+        "ORDER BY loja"
     ).fetchall()
 
     conexao.close()
@@ -39,34 +38,58 @@ def buscar_resumo():
     return {
         "total": total,
         "cupons": cupons,
-        "lojas": [dict(item) for item in lojas],
+        "lojas": len(lojas),
+        "opcoes_lojas": [item["loja"] for item in lojas],
     }
 
 
-def buscar_promocoes(busca=""):
+def buscar_promocoes(busca="", loja="", cupom="todos",
+                     data_inicio="", data_fim=""):
     conexao = abrir_banco()
+
+    consulta = """
+        SELECT id, canal, data, mensagem, link, preco, cupom, loja
+        FROM promocoes
+        WHERE 1 = 1
+    """
+    parametros = []
 
     if busca:
         termo = f"%{busca}%"
-        consulta = """
-            SELECT id, canal, data, mensagem, link, preco, cupom, loja
-            FROM promocoes
-            WHERE mensagem LIKE ?
-               OR canal LIKE ?
-               OR loja LIKE ?
-               OR cupom LIKE ?
-            ORDER BY id DESC
-            LIMIT 50
+        consulta += """
+            AND (
+                mensagem LIKE ?
+                OR canal LIKE ?
+                OR loja LIKE ?
+                OR cupom LIKE ?
+            )
         """
-        parametros = (termo, termo, termo, termo)
-    else:
-        consulta = """
-            SELECT id, canal, data, mensagem, link, preco, cupom, loja
-            FROM promocoes
-            ORDER BY id DESC
-            LIMIT 50
-        """
-        parametros = ()
+        parametros.extend([termo, termo, termo, termo])
+
+    if loja:
+        consulta += " AND loja = ?"
+        parametros.append(loja)
+
+    if cupom == "com":
+        consulta += " AND cupom IS NOT NULL AND TRIM(cupom) <> ''"
+    elif cupom == "sem":
+        consulta += " AND (cupom IS NULL OR TRIM(cupom) = '')"
+
+    data_sql = (
+        "substr(data, 7, 4) || '-' || "
+        "substr(data, 4, 2) || '-' || "
+        "substr(data, 1, 2)"
+    )
+
+    if data_inicio:
+        consulta += f" AND {data_sql} >= ?"
+        parametros.append(data_inicio)
+
+    if data_fim:
+        consulta += f" AND {data_sql} <= ?"
+        parametros.append(data_fim)
+
+    consulta += " ORDER BY id DESC LIMIT 200"
 
     resultados = conexao.execute(consulta, parametros).fetchall()
     conexao.close()
@@ -91,8 +114,18 @@ class Servidor(BaseHTTPRequestHandler):
             return
 
         if pagina.path == "/api/promocoes":
-            busca = parse_qs(pagina.query).get("busca", [""])[0].strip()
-            self.responder_json({"items": buscar_promocoes(busca)})
+            filtros = parse_qs(pagina.query)
+            busca = filtros.get("busca", [""])[0].strip()
+            loja = filtros.get("loja", [""])[0].strip()
+            cupom = filtros.get("cupom", ["todos"])[0].strip()
+            data_inicio = filtros.get("data_inicio", [""])[0].strip()
+            data_fim = filtros.get("data_fim", [""])[0].strip()
+
+            self.responder_json({
+                "items": buscar_promocoes(
+                    busca, loja, cupom, data_inicio, data_fim
+                )
+            })
             return
 
         if pagina.path == "/":
@@ -105,7 +138,11 @@ class Servidor(BaseHTTPRequestHandler):
             return
 
         conteudo = arquivo.read_bytes()
-        tipo = "text/html; charset=utf-8" if arquivo.suffix == ".html" else "text/plain; charset=utf-8"
+        tipo = (
+            "text/html; charset=utf-8"
+            if arquivo.suffix == ".html"
+            else "text/plain; charset=utf-8"
+        )
 
         self.send_response(200)
         self.send_header("Content-Type", tipo)
