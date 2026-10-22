@@ -40,6 +40,55 @@
             .filtros { grid-template-columns: 1fr; }
             .acoes button { flex: 1; }
         }
+
+        .modal-detalhes[hidden] { display: none !important; }
+        .modal-detalhes {
+            position: fixed; inset: 0; z-index: 1000;
+            background: rgba(15, 23, 42, .65);
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal-conteudo {
+            background: white; color: #18212f; width: 100%;
+            max-width: 850px; max-height: 90vh; overflow-y: auto;
+            border-radius: 12px; padding: 24px;
+            box-shadow: 0 15px 50px rgba(0,0,0,.25);
+        }
+        .modal-cabecalho {
+            display: flex; justify-content: space-between;
+            align-items: center; gap: 12px; margin-bottom: 20px;
+        }
+        .modal-cabecalho h2 { margin: 0; font-size: 22px; }
+        .modal-cabecalho button {
+            padding: 9px 12px; cursor: pointer; border: 1px solid #d1d5db;
+            border-radius: 8px; background: white;
+        }
+        .detalhes-grade {
+            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px; margin-bottom: 20px;
+        }
+        .detalhe-campo {
+            min-width: 0; padding: 12px; border: 1px solid #e5e7eb;
+            border-radius: 8px; overflow-wrap: anywhere;
+        }
+        .detalhe-campo strong {
+            display: block; color: #6b7280; font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .detalhe-mensagem {
+            white-space: pre-wrap; overflow-wrap: anywhere;
+            background: #f8fafc; border-radius: 8px;
+            padding: 14px; margin: 8px 0 20px;
+        }
+        .detalhe-imagem {
+            display: block; max-width: 100%; max-height: 320px;
+            object-fit: contain; margin: 12px 0 20px;
+        }
+        @media (max-width: 600px) {
+            .detalhes-grade { grid-template-columns: 1fr; }
+            .modal-conteudo { padding: 16px; }
+        }
+
     </style>
 </head>
 <body>
@@ -67,6 +116,8 @@
             </select>
             <input id="data_inicio" type="date" aria-label="Data inicial" title="Data inicial">
             <input id="data_fim" type="date" aria-label="Data final" title="Data final">
+            <input id="preco_min" type="number" min="0" step="0.01" placeholder="Preço mínimo (R$)">
+            <input id="preco_max" type="number" min="0" step="0.01" placeholder="Preço máximo (R$)">
             <button onclick="carregar()">Filtrar</button>
         </section>
 
@@ -87,15 +138,28 @@
                             <th>Preço</th>
                             <th>Cupom</th>
                             <th>Link</th>
+                            <th>Detalhes</th>
                         </tr>
                     </thead>
                     <tbody id="lista">
-                        <tr><td colspan="6" class="muted">Carregando...</td></tr>
+                        <tr><td colspan="7" class="muted">Carregando...</td></tr>
                     </tbody>
                 </table>
             </div>
         </section>
     </main>
+
+    <div id="modalDetalhes" class="modal-detalhes" hidden
+         role="dialog" aria-modal="true" aria-labelledby="tituloDetalhes">
+        <div class="modal-conteudo">
+            <div class="modal-cabecalho">
+                <h2 id="tituloDetalhes">Detalhes da promo??o</h2>
+                <button type="button" onclick="fecharDetalhes()" aria-label="Fechar">Fechar ?</button>
+            </div>
+            <div id="conteudoDetalhes">Carregando...</div>
+        </div>
+    </div>
+
 
     <script>
         let lojasCarregadas = false;
@@ -106,13 +170,23 @@
             const cupom = document.getElementById("cupom").value;
             const dataInicio = document.getElementById("data_inicio").value;
             const dataFim = document.getElementById("data_fim").value;
+            const precoMin = document.getElementById("preco_min").value;
+            const precoMax = document.getElementById("preco_max").value;
+
+            if (precoMin && precoMax && Number(precoMin) > Number(precoMax)) {
+                document.getElementById("resultado").textContent =
+                    "O preço mínimo não pode ser maior que o máximo.";
+                return;
+            }
 
             const parametros = new URLSearchParams({
                 busca,
                 loja,
                 cupom,
                 data_inicio: dataInicio,
-                data_fim: dataFim
+                data_fim: dataFim,
+                preco_min: precoMin,
+                preco_max: precoMax
             });
 
             const tabela = document.getElementById("lista");
@@ -150,7 +224,7 @@
                     dados.items.length + " promoção(ões) encontrada(s). Exibindo no máximo 200.";
 
                 if (!dados.items.length) {
-                    tabela.innerHTML = '<tr><td colspan="6" class="muted">Nenhuma promoção encontrada.</td></tr>';
+                    tabela.innerHTML = '<tr><td colspan="7" class="muted">Nenhuma promoção encontrada.</td></tr>';
                     return;
                 }
 
@@ -162,11 +236,12 @@
                         <td class="preco">${escapar(promocao.preco || "-")}</td>
                         <td class="cupom">${escapar(promocao.cupom || "-")}</td>
                         <td>${criarLink(promocao.link)}</td>
+                        <td><button type="button" onclick="verDetalhes(${Number(promocao.id)})">Ver detalhes</button></td>
                     </tr>
                 `).join("");
             } catch (erro) {
                 document.getElementById("resultado").textContent = "Erro ao carregar as promoções.";
-                tabela.innerHTML = '<tr><td colspan="6" class="muted">Verifique se o servidor está funcionando e tente novamente.</td></tr>';
+                tabela.innerHTML = '<tr><td colspan="7" class="muted">Verifique se o servidor está funcionando e tente novamente.</td></tr>';
                 console.error(erro);
             }
         }
@@ -177,6 +252,8 @@
             document.getElementById("cupom").value = "todos";
             document.getElementById("data_inicio").value = "";
             document.getElementById("data_fim").value = "";
+            document.getElementById("preco_min").value = "";
+            document.getElementById("preco_max").value = "";
             carregar();
         }
 
@@ -206,6 +283,83 @@
                 return "-";
             }
         }
+
+
+        function campoDetalhe(rotulo, valor) {
+            const exibicao = valor === null || valor === undefined || valor === ""
+                ? "-"
+                : String(valor);
+            return `<div class="detalhe-campo">
+                <strong>${escapar(rotulo)}</strong>
+                <div>${escapar(exibicao)}</div>
+            </div>`;
+        }
+
+        function criarImagemDetalhe(valor) {
+            if (!valor) return "";
+            try {
+                const url = new URL(valor);
+                if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+                return `<img class="detalhe-imagem" src="${escapar(url.href)}"
+                    alt="Imagem da promo??o" loading="lazy">`;
+            } catch {
+                return "";
+            }
+        }
+
+        async function verDetalhes(id) {
+            const modal = document.getElementById("modalDetalhes");
+            const conteudo = document.getElementById("conteudoDetalhes");
+            modal.hidden = false;
+            conteudo.textContent = "Carregando detalhes...";
+
+            try {
+                const resposta = await fetch("/api/promocoes/" + encodeURIComponent(id));
+                const dados = await resposta.json();
+
+                if (!resposta.ok || !dados.item) {
+                    throw new Error(dados.erro || "N?o foi poss?vel carregar a promo??o.");
+                }
+
+                const p = dados.item;
+                conteudo.innerHTML = `
+                    <div class="detalhes-grade">
+                        ${campoDetalhe("ID da promo??o", p.id)}
+                        ${campoDetalhe("ID do Telegram", p.telegram_id)}
+                        ${campoDetalhe("Canal de origem", p.canal)}
+                        ${campoDetalhe("Data", p.data)}
+                        ${campoDetalhe("Loja", p.loja)}
+                        ${campoDetalhe("Pre?o registrado", p.preco)}
+                        ${campoDetalhe("Cupom", p.cupom)}
+                        <div class="detalhe-campo">
+                            <strong>Link da oferta</strong>
+                            <div>${criarLink(p.link)}</div>
+                        </div>
+                        ${campoDetalhe("ID do produto", p.produto_id)}
+                        ${campoDetalhe("Assinatura da mensagem", p.assinatura_mensagem)}
+                        ${campoDetalhe("Chave do produto", p.chave_produto_texto)}
+                        ${campoDetalhe("Imagem cadastrada", p.imagem)}
+                    </div>
+                    <h3>Mensagem completa</h3>
+                    <div class="detalhe-mensagem">${escapar(p.mensagem || "Sem mensagem cadastrada.")}</div>
+                    ${criarImagemDetalhe(p.imagem)}
+                `;
+            } catch (erro) {
+                conteudo.textContent = "Erro ao carregar os detalhes: " + erro.message;
+            }
+        }
+
+        function fecharDetalhes() {
+            document.getElementById("modalDetalhes").hidden = true;
+        }
+
+        document.getElementById("modalDetalhes").addEventListener("click", evento => {
+            if (evento.target.id === "modalDetalhes") fecharDetalhes();
+        });
+
+        document.addEventListener("keydown", evento => {
+            if (evento.key === "Escape") fecharDetalhes();
+        });
 
         document.getElementById("busca").addEventListener("keydown", evento => {
             if (evento.key === "Enter") carregar();

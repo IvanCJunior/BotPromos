@@ -44,7 +44,8 @@ def buscar_resumo():
 
 
 def buscar_promocoes(busca="", loja="", cupom="todos",
-                     data_inicio="", data_fim=""):
+                     data_inicio="", data_fim="",
+                     preco_min="", preco_max=""):
     conexao = abrir_banco()
 
     consulta = """
@@ -89,12 +90,39 @@ def buscar_promocoes(busca="", loja="", cupom="todos",
         consulta += f" AND {data_sql} <= ?"
         parametros.append(data_fim)
 
+    # Converte preços brasileiros em números para permitir comparações.
+    # Ex.: "R$ 1.234,56" passa a ser 1234.56.
+    preco_sql = (
+        "CAST(REPLACE(REPLACE(REPLACE(REPLACE("
+        "preco, 'R$', ''), '.', ''), ',', '.'), ' ', '') AS REAL)"
+    )
+
+    if preco_min:
+        consulta += f" AND {preco_sql} >= ?"
+        parametros.append(float(preco_min))
+
+    if preco_max:
+        consulta += f" AND {preco_sql} <= ?"
+        parametros.append(float(preco_max))
+
     consulta += " ORDER BY id DESC LIMIT 200"
 
     resultados = conexao.execute(consulta, parametros).fetchall()
     conexao.close()
 
     return [dict(item) for item in resultados]
+
+
+def buscar_promocao_detalhe(promocao_id):
+    conexao = abrir_banco()
+    try:
+        item = conexao.execute(
+            "SELECT * FROM promocoes WHERE id = ?",
+            (promocao_id,)
+        ).fetchone()
+        return dict(item) if item else None
+    finally:
+        conexao.close()
 
 
 class Servidor(BaseHTTPRequestHandler):
@@ -113,6 +141,23 @@ class Servidor(BaseHTTPRequestHandler):
             self.responder_json(buscar_resumo())
             return
 
+        if pagina.path.startswith("/api/promocoes/"):
+            identificador = pagina.path.removeprefix("/api/promocoes/").strip("/")
+            try:
+                if not identificador.isdigit():
+                    raise ValueError()
+                promocao = buscar_promocao_detalhe(int(identificador))
+            except ValueError:
+                self.responder_json({"erro": "ID de promo??o inv?lido."}, 400)
+                return
+
+            if promocao is None:
+                self.responder_json({"erro": "Promo??o n?o encontrada."}, 404)
+                return
+
+            self.responder_json({"item": promocao})
+            return
+
         if pagina.path == "/api/promocoes":
             filtros = parse_qs(pagina.query)
             busca = filtros.get("busca", [""])[0].strip()
@@ -120,10 +165,26 @@ class Servidor(BaseHTTPRequestHandler):
             cupom = filtros.get("cupom", ["todos"])[0].strip()
             data_inicio = filtros.get("data_inicio", [""])[0].strip()
             data_fim = filtros.get("data_fim", [""])[0].strip()
+            preco_min = filtros.get("preco_min", [""])[0].strip()
+            preco_max = filtros.get("preco_max", [""])[0].strip()
+
+            try:
+                if preco_min and float(preco_min) < 0:
+                    raise ValueError()
+                if preco_max and float(preco_max) < 0:
+                    raise ValueError()
+                if preco_min and preco_max and float(preco_min) > float(preco_max):
+                    raise ValueError()
+            except ValueError:
+                self.responder_json(
+                    {"erro": "Informe uma faixa de preço válida."}, 400
+                )
+                return
 
             self.responder_json({
                 "items": buscar_promocoes(
-                    busca, loja, cupom, data_inicio, data_fim
+                    busca, loja, cupom, data_inicio, data_fim,
+                    preco_min, preco_max
                 )
             })
             return
