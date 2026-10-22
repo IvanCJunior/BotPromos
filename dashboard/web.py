@@ -137,6 +137,10 @@ class Servidor(BaseHTTPRequestHandler):
     def do_GET(self):
         pagina = urlparse(self.path)
 
+        if pagina.path == "/api/estatisticas":
+            self.responder_json(buscar_estatisticas())
+            return
+
         if pagina.path == "/api/resumo":
             self.responder_json(buscar_resumo())
             return
@@ -228,5 +232,63 @@ def iniciar():
         servidor.server_close()
 
 
+def buscar_estatisticas():
+    conexao = abrir_banco()
+
+    try:
+        por_dia = conexao.execute("""
+            SELECT
+                substr(data, 7, 4) || '-' ||
+                substr(data, 4, 2) || '-' ||
+                substr(data, 1, 2) AS dia,
+                COUNT(*) AS quantidade
+            FROM promocoes
+            WHERE data IS NOT NULL AND TRIM(data) <> ''
+            GROUP BY dia
+            ORDER BY dia DESC
+            LIMIT 14
+        """).fetchall()
+
+        por_loja = conexao.execute("""
+            SELECT
+                COALESCE(NULLIF(TRIM(loja), ''), 'Desconhecida') AS nome,
+                COUNT(*) AS quantidade
+            FROM promocoes
+            GROUP BY nome
+            ORDER BY quantidade DESC, nome
+            LIMIT 8
+        """).fetchall()
+
+        cupons = conexao.execute("""
+            SELECT
+                CASE
+                    WHEN cupom IS NOT NULL AND TRIM(cupom) <> ''
+                    THEN 'Com cupom'
+                    ELSE 'Sem cupom'
+                END AS categoria,
+                COUNT(*) AS quantidade
+            FROM promocoes
+            GROUP BY categoria
+        """).fetchall()
+
+        return {
+            "por_dia": [
+                {"dia": item["dia"], "quantidade": item["quantidade"]}
+                for item in reversed(por_dia)
+            ],
+            "por_loja": [
+                {"loja": item["nome"], "quantidade": item["quantidade"]}
+                for item in por_loja
+            ],
+            "cupons": [
+                {"categoria": item["categoria"], "quantidade": item["quantidade"]}
+                for item in cupons
+            ],
+        }
+    finally:
+        conexao.close()
+
+
 if __name__ == "__main__":
     iniciar()
+

@@ -104,6 +104,43 @@
             <div class="card"><small>Lojas identificadas</small><strong id="lojas">-</strong></div>
         </section>
 
+
+        <section id="secaoGraficos" class="graficos">
+            <div class="grafico-card">
+                <h2>Promoções por dia</h2>
+                <div id="graficoDias">Carregando...</div>
+            </div>
+            <div class="grafico-card">
+                <h2>Promoções por loja</h2>
+                <div id="graficoLojas">Carregando...</div>
+            </div>
+            <div class="grafico-card">
+                <h2>Promoções com e sem cupom</h2>
+                <div id="graficoCupons">Carregando...</div>
+            </div>
+        </section>
+
+        <style>
+        .graficos { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin:20px 0; }
+        .grafico-card { background:white; padding:18px; border-radius:12px; box-shadow:0 2px 8px #00000012; overflow-wrap:anywhere; }
+        .grafico-card h2 { font-size:17px; margin-top:0; }
+        .grafico-linha { margin:10px 0; }
+        .grafico-trilho { height:10px; background:#eee; border-radius:5px; overflow:hidden; }
+        .grafico-barra { height:100%; background:#6d5dfc; }
+        .grafico-legenda { display:flex; justify-content:space-between; gap:8px; font-size:13px; margin-bottom:4px; }
+
+        .grafico-pizza-layout { display:flex; flex-direction:column; align-items:center; gap:16px; }
+        .grafico-pizza { width:190px; height:190px; max-width:100%; border-radius:50%; flex-shrink:0; }
+        .grafico-pizza-legenda { width:100%; display:grid; gap:8px; }
+        .grafico-pizza-item { display:grid; grid-template-columns:12px minmax(0,1fr) auto; align-items:center; gap:8px; font-size:12px; }
+        .grafico-pizza-cor { width:11px; height:11px; border-radius:3px; }
+        .grafico-pizza-item span:nth-child(2) { overflow-wrap:anywhere; }
+        .grafico-pizza-total { text-align:center; font-weight:600; margin-bottom:0; }
+        .grafico-dias { display:flex; align-items:end; gap:6px; min-height:150px; overflow-x:auto; }
+        .grafico-dia { min-width:26px; flex:1; text-align:center; font-size:11px; }
+        .grafico-dia-barra { background:#6d5dfc; min-height:3px; border-radius:4px 4px 0 0; }
+        </style>
+
         <section class="filtros">
             <input id="busca" type="text" placeholder="Pesquisar produto, canal, loja ou cupom">
             <select id="loja">
@@ -153,7 +190,7 @@
          role="dialog" aria-modal="true" aria-labelledby="tituloDetalhes">
         <div class="modal-conteudo">
             <div class="modal-cabecalho">
-                <h2 id="tituloDetalhes">Detalhes da promo??o</h2>
+                <h2 id="tituloDetalhes">Detalhes da promoção</h2>
                 <button type="button" onclick="fecharDetalhes()" aria-label="Fechar">Fechar ?</button>
             </div>
             <div id="conteudoDetalhes">Carregando...</div>
@@ -163,6 +200,107 @@
 
     <script>
         let lojasCarregadas = false;
+
+
+        async function carregarEstatisticas() {
+            const diasEl = document.getElementById("graficoDias");
+            const lojasEl = document.getElementById("graficoLojas");
+            const cuponsEl = document.getElementById("graficoCupons");
+
+            try {
+                const resposta = await fetch("/api/estatisticas");
+                if (!resposta.ok) throw new Error("HTTP " + resposta.status);
+                const dados = await resposta.json();
+                const dias = dados.por_dia || [];
+                if (!dias.length) {
+                    diasEl.textContent = "Sem dados di?rios.";
+                } else {
+                    const totalDias = dias.reduce(
+                        (s, x) => s + (Number(x.quantidade) || 0), 0
+                    );
+                    const cores = [
+                        "#6254e8", "#e76f51", "#2a9d8f", "#e9c46a",
+                        "#457b9d", "#f4a261", "#9b5de5", "#00a896",
+                        "#ef476f", "#6c757d", "#8ab17d", "#bc6c25",
+                        "#577590", "#f15bb5", "#43aa8b", "#f8961e"
+                    ];
+                    let angulo = 0;
+                    const segmentos = dias.map((item, i) => {
+                        const qtd = Number(item.quantidade) || 0;
+                        const inicio = angulo;
+                        angulo += totalDias ? qtd / totalDias * 360 : 0;
+                        return {
+                            item,
+                            qtd,
+                            inicio,
+                            fim: angulo,
+                            cor: cores[i % cores.length]
+                        };
+                    });
+
+                    const fatias = segmentos.map(s =>
+                        `${s.cor} ${s.inicio}deg ${s.fim}deg`
+                    ).join(", ");
+
+                    diasEl.innerHTML =
+                        '<div class="grafico-pizza-layout">' +
+                            '<div class="grafico-pizza" role="img" aria-label="Distribuição das promoções por dia" style="background:conic-gradient(' +
+                            fatias + ')"></div>' +
+                            '<div class="grafico-pizza-legenda">' +
+                            segmentos.map(s => {
+                                const data = String(s.item.dia || s.item.data || "");
+                                const pct = totalDias
+                                    ? (s.qtd / totalDias * 100).toFixed(1)
+                                    : "0.0";
+                                return '<div class="grafico-pizza-item">' +
+                                    '<span class="grafico-pizza-cor" style="background:' +
+                                    s.cor + '"></span><span>' +
+                                    escapar(data) + '</span><strong>' +
+                                    s.qtd + ' (' + pct + '%)</strong></div>';
+                            }).join("") +
+                            '</div></div>' +
+                            '<p class="grafico-pizza-total">Total: ' +
+                            totalDias + ' promoções</p>';
+                }
+
+                const lojas = dados.por_loja || [];
+
+                if (!lojas.length) {
+                    lojasEl.textContent = "Sem dados por loja.";
+                } else {
+                    const maxLoja = Math.max(...lojas.map(x => Number(x.quantidade) || 0), 1);
+                    lojasEl.innerHTML = lojas.map(x => {
+                        const nome = String(x.loja || x.nome || "Desconhecida");
+                        const qtd = Number(x.quantidade) || 0;
+                        return '<div class="grafico-linha"><div class="grafico-legenda"><span>' +
+                            escapar(nome) + '</span><strong>' + qtd +
+                            '</strong></div><div class="grafico-trilho"><div class="grafico-barra" style="width:' +
+                            (qtd / maxLoja * 100) + '%"></div></div></div>';
+                    }).join("");
+                }
+
+                const cupons = dados.cupons || [];
+                if (!cupons.length) {
+                    cuponsEl.textContent = "Sem dados de cupons.";
+                } else {
+                    const total = cupons.reduce((s, x) => s + (Number(x.quantidade) || 0), 0);
+                    cuponsEl.innerHTML = cupons.map(x => {
+                        const nome = String(x.categoria || x.tipo || x.cupom || x.nome || "Categoria");
+                        const qtd = Number(x.quantidade) || 0;
+                        const pct = total ? (qtd / total * 100).toFixed(1) : "0.0";
+                        return '<div class="grafico-linha"><div class="grafico-legenda"><span>' +
+                            escapar(nome) + '</span><strong>' + qtd + ' (' + pct +
+                            '%)</strong></div><div class="grafico-trilho"><div class="grafico-barra" style="width:' +
+                            pct + '%"></div></div></div>';
+                    }).join("");
+                }
+            } catch (erro) {
+                console.error("Erro ao carregar estat?sticas:", erro);
+                diasEl.textContent = "Erro ao carregar os dados.";
+                lojasEl.textContent = "Erro ao carregar os dados.";
+                cuponsEl.textContent = "Erro ao carregar os dados.";
+            }
+        }
 
         async function carregar() {
             const busca = document.getElementById("busca").value.trim();
@@ -301,7 +439,7 @@
                 const url = new URL(valor);
                 if (url.protocol !== "https:" && url.protocol !== "http:") return "";
                 return `<img class="detalhe-imagem" src="${escapar(url.href)}"
-                    alt="Imagem da promo??o" loading="lazy">`;
+                    alt="Imagem da promoção" loading="lazy">`;
             } catch {
                 return "";
             }
@@ -318,13 +456,13 @@
                 const dados = await resposta.json();
 
                 if (!resposta.ok || !dados.item) {
-                    throw new Error(dados.erro || "N?o foi poss?vel carregar a promo??o.");
+                    throw new Error(dados.erro || "Não foi possível carregar a promoção.");
                 }
 
                 const p = dados.item;
                 conteudo.innerHTML = `
                     <div class="detalhes-grade">
-                        ${campoDetalhe("ID da promo??o", p.id)}
+                        ${campoDetalhe("ID da promoção", p.id)}
                         ${campoDetalhe("ID do Telegram", p.telegram_id)}
                         ${campoDetalhe("Canal de origem", p.canal)}
                         ${campoDetalhe("Data", p.data)}
@@ -365,6 +503,8 @@
             if (evento.key === "Enter") carregar();
         });
 
+        carregarEstatisticas();
+        setInterval(carregarEstatisticas, 60000);
         carregar();
         setInterval(carregar, 15000);
     </script>
