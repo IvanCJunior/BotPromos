@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -94,7 +94,7 @@
 <body>
     <header>
         <h1>BotPromos</h1>
-        <span><span class="online">● ONLINE</span> Dashboard</span>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><span><span class="online">● ONLINE</span> Dashboard</span><span id="usuarioLogado" style="font-size:13px"></span><a id="linkAdmin" href="/admin" style="display:none;color:#fff;background:#374151;padding:8px 11px;border-radius:8px">Administração</a><button onclick="sairPainel()" style="padding:8px 11px">Sair</button></div>
     </header>
 
     <main>
@@ -200,6 +200,22 @@
 
     <script>
         let lojasCarregadas = false;
+        let tokenCSRF = "";
+
+        async function prepararSessao() {
+            const resposta = await fetch("/api/me");
+            if (!resposta.ok) { location.href = "/login"; return; }
+            const dados = await resposta.json();
+            tokenCSRF = dados.csrf;
+            document.getElementById("usuarioLogado").textContent = dados.usuario.nome;
+            if (dados.usuario.papel === "admin") document.getElementById("linkAdmin").style.display = "inline-block";
+        }
+
+        async function sairPainel() {
+            try {
+                await fetch("/api/logout", { method: "POST", headers: { "Content-Type": "application/json", "X-CSRF-Token": tokenCSRF }, body: "{}" });
+            } finally { location.href = "/login"; }
+        }
 
 
         async function carregarEstatisticas() {
@@ -503,6 +519,7 @@
             if (evento.key === "Enter") carregar();
         });
 
+        prepararSessao();
         carregarEstatisticas();
         setInterval(carregarEstatisticas, 60000);
         carregar();

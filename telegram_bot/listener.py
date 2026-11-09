@@ -11,7 +11,8 @@ from telethon import events
 
 from affiliate.manager import gerar_link_afiliado
 from ai.rewriter import reformular_promocao
-from config.channels import CHANNELS
+from config.channels import CHANNELS  # fallback de compatibilidade
+from dashboard.auth_store import listar_canais
 from config.settings import (
     EXIBIR_DIAGNOSTICO_TERMINAL,
     EXIBIR_HISTORICO_TERMINAL,
@@ -744,11 +745,16 @@ async def _adicionar_na_fila_whatsapp(
 @client.on(events.NewMessage)
 async def nova_promocao(event: Any) -> None:
     """Recebe, valida, converte e encaminha uma promoção ao WhatsApp."""
-    if event.chat_id not in CHANNELS:
+    # A lista ativa é lida do SQLite para refletir alterações feitas no painel.
+    try:
+        canais_ativos = {int(item["chat_id"]): item["nome"] for item in listar_canais(apenas_ativos=True)}
+    except Exception:
+        canais_ativos = CHANNELS
+    if event.chat_id not in canais_ativos:
         return
 
     texto = event.raw_text or ""
-    canal = CHANNELS[event.chat_id]
+    canal = canais_ativos[event.chat_id]
     telegram_id = event.id
     inicio_total = perf_counter()
 

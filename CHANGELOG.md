@@ -23,3 +23,19 @@
 DIAGNOSTICOS_DETALHADOS=true
 MONITORAR_PERFIS=true
 ```
+
+
+## AC3 — autenticação e administração local
+- Adiciona login e logout com sessões temporárias.
+- Armazena senhas com hash scrypt, sem salvar senhas em texto puro.
+- Implementa perfis de administrador e funcionário e proteção das rotas administrativas.
+- Adiciona cadastro e ativação/desativação de funcionários.
+- Adiciona cadastro, ativação/desativação e remoção de canais Telegram.
+- Faz o listener consultar os canais ativos no SQLite, sem depender apenas da lista fixa.
+- Mantém o dashboard AC2 e seus filtros, detalhes, gráficos e estatísticas.
+
+
+## AC3 — fechamento da entrega
+- Documentado o requisito de senha numérica de quatro dígitos.
+- Incluído roteiro de validação e registro explícito dos testes não executados com o bot desligado.
+- Registradas as limitações de uso local e da senha curta.
